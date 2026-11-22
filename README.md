@@ -79,5 +79,21 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+### 查询日志统计明细
+
+查询构建器的实时计算和缓存命中都会在查询日志里落一笔执行明细
+（`execution_id` / `sequence` / `execution_source` / `entry_kind` / `retry_of`），
+查询日志页面顶部按所选指标与时间过滤，再用同一份明细计算分组数量、慢查询数和平均耗时。
+
+- `GET /api/cross/query-journal/statistics`：按 `metrics`、`start_time`、`end_time`、
+  `status` 过滤并分页。不带 `page_token` 时按最新已确认明细取数并返回快照令牌；
+  翻页带回令牌后，总量、汇总和每页内容绑定同一批执行，新入账的日志不会改动当前结果。
+  `refresh=true` 会重新取数，因此重新检索可以看到新记录。
+- `GET /api/cross/query-journal/detail-batches`：查看（并复用）该过滤条件下已处理的统计明细；
+  明细的提交版本没变时直接复用，避免反复筛选、翻页时重扫全量日志。
+- `GET /api/cross/query-journal/snapshots/{token}`：用快照里的明细复算汇总，校验当前结果来自同一批执行。
+- `GET /api/cross/query-journal/executions/{execution_id}`：定位某笔执行属于哪个批次、
+  是否计入当前平均值、贡献占比和偏差，用来判断同一秒内高耗时是偶发还是集中。
+
 领域：数据工程
 子方向：数据分析与数据应用

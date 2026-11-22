@@ -38,6 +38,23 @@ body { margin: 0; background: #f6f8fb; color: #1f2937; }
 .create-field { display: block; margin-bottom: 10px; }
 .create-field span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
 .create-field input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+/* 查询日志统计明细 */
+.journal-panel { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+.journal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.journal-head h3 { margin: 0; font-size: 15px; }
+.journal-desc { color: var(--muted); font-size: 12px; margin: 4px 0 10px; max-width: 720px; }
+.journal-snapshot { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.journal-meta { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+.journal-notice { font-size: 12px; color: #1f6feb; margin: 0 0 10px; }
+.journal-pager { display: flex; gap: 6px; }
+.journal-groups { margin-top: 12px; font-size: 13px; }
+.journal-groups summary { cursor: pointer; color: var(--muted); margin-bottom: 8px; }
+.badge { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: 11px; }
+.badge-computed { background: #e8f0fe; color: #1f6feb; }
+.badge-cache { background: #e7f7ed; color: #15803d; }
+.badge-new { background: #f1f5f9; color: #475569; }
+.badge-retry { background: #fef3c7; color: #b45309; }
+.retry-note { display: block; color: var(--muted); font-size: 11px; }
 /* DAG 拓扑图 */
 .dag-wrap { position: relative; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #fff; min-height: 320px; user-select: none; }
 .dag-svg { width: 100%; height: 100%; }
@@ -70,3 +87,5 @@ body { margin: 0; background: #f6f8fb; color: #1f2937; }
 .analysis-chart { display: flex; align-items: flex-end; gap: 8px; height: 160px; padding: 12px 0; }
 .analysis-bar { flex: 1; border-radius: 4px 4px 0 0; background: var(--brand); min-width: 24px; position: relative; transition: height 0.4s; }
 .analysis-bar span { position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); white-space: nowrap; }
+.journal-located { font-size: 12px; color: #334155; background: #f8fafc; border: 1px dashed var(--border); border-radius: 6px; padding: 8px 10px; margin: 10px 0 0; }
+.locate-link { margin-left: 8px; font-size: 12px; }

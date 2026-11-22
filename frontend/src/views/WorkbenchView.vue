@@ -37,6 +37,8 @@
       <button class="btn ghost" data-testid="reset" type="button" @click="resetFilters">重置条件</button>
     </form>
 
+    <QueryJournalPanel v-if="meta.key === 'query_journal'" />
+
     <table class="data-table">
       <thead>
         <tr>
@@ -104,6 +106,7 @@ import {
   runAction as applyAction,
 } from '@/api/backend-service'
 import type { EntryRow } from '@/data/types'
+import QueryJournalPanel from '@/views/QueryJournalPanel.vue'
 
 const props = defineProps<{ moduleKey: string }>()
 const meta = moduleMeta(props.moduleKey)

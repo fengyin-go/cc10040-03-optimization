@@ -23,7 +23,8 @@ class QueryBuilderService(BaseModuleService):
     NEGATIVE_ACTIONS = []
 
     def execute_query(self, entry_id: int, operator: str = "系统",
-                      use_cache: bool = True) -> dict[str, Any] | None:
+                      use_cache: bool = True,
+                      retry_of: str | None = None) -> dict[str, Any] | None:
         """执行查询模板并返回结果与日志。
 
         跨模块数据流: query_builder -> caliber_version(口径验证) -> cache_layer(缓存) -> query_journal(日志)
@@ -42,7 +43,21 @@ class QueryBuilderService(BaseModuleService):
         calibers = store.find_by_field("caliber_version", "所属指标", metric_name)
         active_caliber = next((c for c in calibers if c.get("status") == "已生效"), None)
         if active_caliber is None:
-            return {"error": f"指标 {metric_name} 没有已生效的口径版本"}
+            # 失败的执行也留一笔明细，下一次同请求才能被识别为“重试”。
+            failed = store.record_query_execution(
+                metric=metric_name,
+                metric_id=template.get("id", 0),
+                operator=operator,
+                sql_summary=f"查询模板: {template.get('模板名称')}, 口径校验失败",
+                row_count=0,
+                duration_ms=0.0,
+                status="异常终止",
+                execution_source="computed",
+                request_key=f"template:{entry_id}:{operator}",
+                retry_of=retry_of,
+            )
+            return {"error": f"指标 {metric_name} 没有已生效的口径版本",
+                    "execution": self._execution_detail(failed)}
 
         cache_key = f"query:{metric_name}:{template.get('维度组合','')}:{template.get('过滤条件','')}"
 
@@ -51,16 +66,21 @@ class QueryBuilderService(BaseModuleService):
             cached = store.cache_get(cache_key)
             if cached is not None:
                 t_start = time.time()
-                store.log_query(
+                log_entry = store.record_query_execution(
+                    metric=metric_name,
                     metric_id=template.get("id", 0),
                     operator=operator,
                     sql_summary=f"缓存命中: {template.get('模板名称')}",
                     row_count=len(cached) if isinstance(cached, list) else 1,
                     duration_ms=(time.time() - t_start) * 1000,
                     status="正常",
+                    execution_source="cache",
+                    request_key=f"template:{entry_id}:{operator}",
+                    retry_of=retry_of,
                 )
                 return {"source": "cache", "template": template.get("模板名称"),
-                        "caliber": active_caliber.get("版本号"), "rows": cached}
+                        "caliber": active_caliber.get("版本号"), "rows": cached,
+                        "execution": self._execution_detail(log_entry)}
 
         # 模拟查询执行 - 基于指标数据生成结果
         t_start = time.time()
@@ -80,14 +100,18 @@ class QueryBuilderService(BaseModuleService):
         duration_ms = (time.time() - t_start) * 1000
         status = "慢查询" if duration_ms > 100 else "正常"
 
-        # 写入查询日志
-        store.log_query(
+        # 写入查询日志（实时计算与缓存命中在明细里可区分）
+        log_entry = store.record_query_execution(
+            metric=metric_name,
             metric_id=template.get("id", 0),
             operator=operator,
             sql_summary=f"查询模板: {template.get('模板名称')}, 维度: {template.get('维度组合')}",
             row_count=len(result_rows),
             duration_ms=duration_ms,
             status=status,
+            execution_source="computed",
+            request_key=f"template:{entry_id}:{operator}",
+            retry_of=retry_of,
         )
 
         # 写入缓存
@@ -101,7 +125,29 @@ class QueryBuilderService(BaseModuleService):
 
         return {"source": "computed", "template": template.get("模板名称"),
                 "caliber": active_caliber.get("版本号"), "duration_ms": duration_ms,
-                "cached_for_seconds": cache_ttl, "rows": result_rows}
+                "cached_for_seconds": cache_ttl, "rows": result_rows,
+                "execution": self._execution_detail(log_entry)}
+
+    @staticmethod
+    def _execution_detail(entry: dict[str, Any] | None) -> dict[str, Any] | None:
+        """返回本次执行在统计明细中的定位信息，便于追溯到具体日志。"""
+        if entry is None:
+            return None
+        return {
+            "execution_id": entry.get("execution_id"),
+            "sequence": entry.get("sequence"),
+            "查询时间": entry.get("查询时间"),
+            "execution_source": entry.get("execution_source"),
+            "execution_source_label": entry.get("execution_source_label"),
+            "entry_kind": entry.get("entry_kind"),
+            "is_retry": entry.get("is_retry"),
+            "retry_of": entry.get("retry_of"),
+            "retry_group": entry.get("retry_group"),
+            "attempt": entry.get("attempt"),
+            "duration_ms": entry.get("duration_ms"),
+            "status": entry.get("status"),
+            "commit_version": entry.get("commit_version"),
+        }
 
     def invalidate_query_cache(self, metric_name: str) -> int:
         """当口径版本变更时，失效指标相关的所有查询缓存。

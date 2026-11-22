@@ -61,10 +61,10 @@ def get_caliber_history(metric_name: str):
 
 
 @router.post("/query/{template_id}/execute")
-def execute_query(template_id: int, operator: str = "系统"):
-    """执行查询模板，返回结果与日志"""
+def execute_query(template_id: int, operator: str = "系统", retry_of: str | None = None):
+    """执行查询模板，返回结果与本次执行在统计明细里的定位信息。"""
     svc = QueryBuilderService()
-    return svc.execute_query(template_id, operator=operator)
+    return svc.execute_query(template_id, operator=operator, retry_of=retry_of)
 
 
 @router.post("/data-service/{api_id}/call")
@@ -100,6 +100,94 @@ def cache_stats():
     """获取缓存统计"""
     svc = CacheLayerService()
     return svc.get_cache_stats()
+
+
+@router.get("/query-journal/statistics")
+def query_journal_statistics(
+    metrics: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    status: str | None = None,
+    page: int = 1,
+    size: int = 20,
+    page_token: str | None = None,
+    refresh: bool = False,
+    include_detail: bool = False,
+    slow_threshold_ms: float = 100,
+):
+    """按所选指标与时间过滤，用同一份统计明细计算分组数量、慢查询数和平均耗时。
+
+    首次调用不带 ``page_token``，返回快照令牌；翻页时带上它，聚合和分页就会
+    绑定同一批已确认执行。需要看到新入账记录时去掉令牌或传 ``refresh=true``。
+    """
+    svc = QueryJournalService()
+    return svc.query_statistics(
+        metrics=metrics,
+        start_time=start_time,
+        end_time=end_time,
+        status=status,
+        page=page,
+        size=size,
+        page_token=page_token,
+        refresh=refresh,
+        include_detail=include_detail,
+        slow_threshold_ms=slow_threshold_ms,
+    )
+
+
+@router.get("/query-journal/snapshots/{snapshot_token}")
+def query_journal_snapshot(snapshot_token: str):
+    """取回一份冻结的统计明细批次，用于核实当前汇总由哪批执行算出。"""
+    svc = QueryJournalService()
+    snapshot = svc.verify_snapshot(snapshot_token)
+    if snapshot is None:
+        return {"error": f"统计快照 {snapshot_token} 不存在或已过期"}
+    return snapshot
+
+
+@router.get("/query-journal/detail-batches")
+def query_journal_detail_batches(
+    metrics: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    status: str | None = None,
+    rebuild: bool = False,
+):
+    """查看所选过滤条件对应的统计明细批次（含每笔执行与是否复用）。"""
+    svc = QueryJournalService()
+    batch = svc.build_statistics_detail(
+        metrics=metrics,
+        start_time=start_time,
+        end_time=end_time,
+        status=status,
+        force=rebuild,
+    )
+    summary = svc.summarize(batch["details"])
+    return {
+        "filter": {
+            "metrics": batch["metrics"],
+            "start_time": batch["start_time"],
+            "end_time": batch["end_time"],
+            "status": batch["status"],
+            "filter_key": batch["filter_key"],
+        },
+        "detail_version": batch["detail_version"],
+        "detail_count": batch["detail_count"],
+        "reused": batch["reused"],
+        "reuse_count": batch["reuse_count"],
+        "details": batch["details"],
+        "summary": summary,
+    }
+
+
+@router.get("/query-journal/executions/{execution_id}")
+def query_journal_execution(execution_id: str, slow_threshold_ms: float = 100):
+    """定位一笔执行：属于哪个统计批次、是否计入当前平均值、对平均值贡献多少。"""
+    svc = QueryJournalService()
+    result = svc.locate_execution(execution_id, slow_threshold_ms)
+    if result is None:
+        return {"error": f"查询执行 {execution_id} 不存在"}
+    return result
 
 
 @router.get("/query-journal/slow-queries")
